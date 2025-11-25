@@ -53,7 +53,7 @@ export default function App() {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-t shadow-lg">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-t shadow-lg z-50">
         <div className="max-w-2xl mx-auto flex">
           <button
             onClick={() => setCurrentView('today')}

@@ -3,11 +3,13 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Edit2, Check, X } from 'lucide-react';
 
 interface Config {
   user1Name: string;
   user2Name: string;
+  user1Avatar?: string;
+  user2Avatar?: string;
   customHabits: Array<{
     id: string;
     name: string;
@@ -22,10 +24,10 @@ interface SettingsProps {
 
 export function Settings({ householdCode, identity }: SettingsProps) {
   const [config, setConfig] = useState<Config | null>(null);
-  const [newHabitName, setNewHabitName] = useState('');
-  const [assignedTo, setAssignedTo] = useState<'user1' | 'user2' | 'both'>('both');
-  const [manualSteps, setManualSteps] = useState('');
   const [loading, setLoading] = useState(true);
+  const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
+  const [editHabitName, setEditHabitName] = useState('');
+  const [editAssignedTo, setEditAssignedTo] = useState<'user1' | 'user2' | 'both'>('both');
 
   const fetchConfig = async () => {
     try {
@@ -56,43 +58,136 @@ export function Settings({ householdCode, identity }: SettingsProps) {
     fetchConfig();
   }, [householdCode]);
 
-  const addHabit = async () => {
-    if (!newHabitName.trim()) return;
-    
+
+  const startEditHabit = (habit: Config['customHabits'][0]) => {
+    setEditingHabitId(habit.id);
+    setEditHabitName(habit.name);
+    setEditAssignedTo(habit.assignedTo);
+  };
+
+  const cancelEditHabit = () => {
+    setEditingHabitId(null);
+    setEditHabitName('');
+    setEditAssignedTo('both');
+  };
+
+  const updateHabit = async () => {
+    if (!editingHabitId || !editHabitName.trim() || !config) return;
+
     try {
       const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
-      
+
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/habits/add`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/habits/${editingHabitId}`,
         {
-          method: 'POST',
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${publicAnonKey}`
           },
           body: JSON.stringify({
-            name: newHabitName.trim(),
-            assignedTo
+            name: editHabitName.trim(),
+            assignedTo: editAssignedTo
           })
         }
       );
-      
+
       const result = await response.json();
-      
+
       if (result.success) {
         setConfig(result.config);
-        setNewHabitName('');
-        setAssignedTo('both');
+        cancelEditHabit();
+      } else {
+        alert('Failed to update habit. Please try again.');
       }
     } catch (error) {
-      console.error('Error adding habit:', error);
+      console.error('Error updating habit:', error);
+      alert('Failed to update habit. Please try again.');
     }
   };
 
+  const handleAvatarUpload = async (user: 'user1' | 'user2', file: File | undefined) => {
+    if (!file || !config) return;
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB');
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Convert file to base64 for storage
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string;
+
+      // Store locally in localStorage for immediate display
+      const avatarKey = `avatar_${householdCode}_${user}`;
+      localStorage.setItem(avatarKey, base64);
+
+      // Update local state immediately
+      const updatedConfig = {
+        ...config,
+        [user === 'user1' ? 'user1Avatar' : 'user2Avatar']: base64
+      };
+      setConfig(updatedConfig);
+
+      // Try to upload to server (will fail until functions are deployed)
+      try {
+        const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
+
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/config`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${publicAnonKey}`
+            },
+            body: JSON.stringify({
+              [user === 'user1' ? 'user1Avatar' : 'user2Avatar']: base64
+            })
+          }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            // Remove from localStorage since server now has it
+            localStorage.removeItem(avatarKey);
+            console.log('Avatar uploaded to server successfully');
+          }
+        } else {
+          console.log('Server upload failed, keeping local copy');
+        }
+      } catch (error) {
+        console.log('Server upload failed, keeping local copy:', error);
+      }
+
+      alert('Avatar uploaded successfully! (Stored locally until server sync)');
+    };
+
+    reader.onerror = () => {
+      console.error('File reading error');
+      alert('Error reading file. Please try again.');
+    };
+
+    reader.readAsDataURL(file);
+  };
+
   const deleteHabit = async (habitId: string) => {
+    if (!confirm('Are you sure you want to delete this habit? This action cannot be undone.')) {
+      return;
+    }
+
     try {
       const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
-      
+
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/habits/${habitId}`,
         {
@@ -102,49 +197,32 @@ export function Settings({ householdCode, identity }: SettingsProps) {
           }
         }
       );
-      
+
       const result = await response.json();
-      
+
       if (result.success) {
-        setConfig(result.config);
+        let config = result.config;
+
+        // Load local avatars
+        const user1AvatarKey = `avatar_${householdCode}_user1`;
+        const user2AvatarKey = `avatar_${householdCode}_user2`;
+        const localUser1Avatar = localStorage.getItem(user1AvatarKey);
+        const localUser2Avatar = localStorage.getItem(user2AvatarKey);
+
+        if (localUser1Avatar) {
+          config.user1Avatar = localUser1Avatar;
+        }
+        if (localUser2Avatar) {
+          config.user2Avatar = localUser2Avatar;
+        }
+
+        setConfig(config);
       }
     } catch (error) {
       console.error('Error deleting habit:', error);
     }
   };
 
-  const updateSteps = async () => {
-    const steps = parseInt(manualSteps);
-    if (isNaN(steps) || steps < 0) return;
-    
-    try {
-      const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/steps`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
-          },
-          body: JSON.stringify({
-            user: identity,
-            steps
-          })
-        }
-      );
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setManualSteps('');
-        alert('Steps updated!');
-      }
-    } catch (error) {
-      console.error('Error updating steps:', error);
-    }
-  };
 
   if (loading || !config) {
     return (
@@ -161,79 +239,57 @@ export function Settings({ householdCode, identity }: SettingsProps) {
         <div className="text-gray-400 text-xs">Household: {householdCode}</div>
       </div>
 
-      {/* Manual Steps Entry */}
+      {/* Avatar Management */}
       <Card>
         <CardHeader>
-          <CardTitle>Manual Step Entry</CardTitle>
+          <CardTitle>Profile Pictures</CardTitle>
           <CardDescription>
-            Update your step count manually (Apple Health integration not available in prototype)
+            Upload profile pictures for you and your partner
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <Label htmlFor="steps">Steps for {identity === 'user1' ? config.user1Name : config.user2Name}</Label>
-            <Input
-              id="steps"
-              type="number"
-              placeholder="10000"
-              value={manualSteps}
-              onChange={(e) => setManualSteps(e.target.value)}
-              min="0"
-            />
-          </div>
-          <Button onClick={updateSteps} disabled={!manualSteps}>
-            Update Steps
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Add Custom Habit */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Custom Habit</CardTitle>
-          <CardDescription>
-            Create a new habit for Martin, Elise, or both
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <Label htmlFor="habitName">Habit Name</Label>
-            <Input
-              id="habitName"
-              placeholder="e.g., Read for 30 minutes"
-              value={newHabitName}
-              onChange={(e) => setNewHabitName(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label>Assigned To</Label>
-            <div className="flex gap-2 mt-2">
-              <Button
-                variant={assignedTo === 'user1' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setAssignedTo('user1')}
-              >
-                {config.user1Name}
-              </Button>
-              <Button
-                variant={assignedTo === 'user2' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setAssignedTo('user2')}
-              >
-                {config.user2Name}
-              </Button>
-              <Button
-                variant={assignedTo === 'both' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setAssignedTo('both')}
-              >
-                Both
-              </Button>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col items-center space-y-2">
+              <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
+                {config.user1Avatar ? (
+                  <img src={config.user1Avatar} alt={config.user1Name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-lg font-medium text-gray-600">{config.user1Name.charAt(0)}</span>
+                )}
+              </div>
+              <div className="text-sm font-medium">{config.user1Name}</div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleAvatarUpload('user1', e.target.files?.[0])}
+                className="text-xs"
+                id="user1-avatar"
+              />
+              <label htmlFor="user1-avatar" className="text-xs text-blue-600 cursor-pointer hover:underline">
+                Change photo
+              </label>
+            </div>
+            <div className="flex flex-col items-center space-y-2">
+              <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
+                {config.user2Avatar ? (
+                  <img src={config.user2Avatar} alt={config.user2Name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-lg font-medium text-gray-600">{config.user2Name.charAt(0)}</span>
+                )}
+              </div>
+              <div className="text-sm font-medium">{config.user2Name}</div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleAvatarUpload('user2', e.target.files?.[0])}
+                className="text-xs"
+                id="user2-avatar"
+              />
+              <label htmlFor="user2-avatar" className="text-xs text-blue-600 cursor-pointer hover:underline">
+                Change photo
+              </label>
             </div>
           </div>
-          <Button onClick={addHabit} disabled={!newHabitName.trim()}>
-            Add Habit
-          </Button>
         </CardContent>
       </Card>
 
@@ -248,25 +304,94 @@ export function Settings({ householdCode, identity }: SettingsProps) {
               {config.customHabits.map((habit) => (
                 <div
                   key={habit.id}
-                  className="flex items-center justify-between p-3 border rounded"
+                  className="p-3 border rounded"
                 >
-                  <div>
-                    <div>{habit.name}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {habit.assignedTo === 'both'
-                        ? 'Both'
-                        : habit.assignedTo === 'user1'
-                        ? config.user1Name
-                        : config.user2Name}
+                  {editingHabitId === habit.id ? (
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor={`edit-name-${habit.id}`}>Habit Name</Label>
+                        <Input
+                          id={`edit-name-${habit.id}`}
+                          value={editHabitName}
+                          onChange={(e) => setEditHabitName(e.target.value)}
+                          placeholder="Enter habit name"
+                        />
+                      </div>
+                      <div>
+                        <Label>Assigned To</Label>
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            variant={editAssignedTo === 'user1' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setEditAssignedTo('user1')}
+                          >
+                            {config.user1Name}
+                          </Button>
+                          <Button
+                            variant={editAssignedTo === 'user2' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setEditAssignedTo('user2')}
+                          >
+                            {config.user2Name}
+                          </Button>
+                          <Button
+                            variant={editAssignedTo === 'both' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setEditAssignedTo('both')}
+                          >
+                            Both
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={updateHabit}
+                          disabled={!editHabitName.trim()}
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          Save
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={cancelEditHabit}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteHabit(habit.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-600" />
-                  </Button>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div>{habit.name}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {habit.assignedTo === 'both'
+                            ? 'Both'
+                            : habit.assignedTo === 'user1'
+                            ? config.user1Name
+                            : config.user2Name}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => startEditHabit(habit)}
+                        >
+                          <Edit2 className="h-4 w-4 text-blue-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteHabit(habit.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

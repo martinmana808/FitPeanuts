@@ -8,10 +8,11 @@ interface JournalInputProps {
   value: string;
   submitted: boolean;
   onChange: (value: string) => void;
+  onSave?: () => void;
   onSubmit: () => void;
 }
 
-export function JournalInput({ value, submitted, onChange, onSubmit }: JournalInputProps) {
+export function JournalInput({ value, submitted, onChange, onSave, onSubmit }: JournalInputProps) {
   const [isEditing, setIsEditing] = useState(false);
 
   if (submitted && !isEditing) {
@@ -55,18 +56,31 @@ export function JournalInput({ value, submitted, onChange, onSubmit }: JournalIn
         placeholder="How did today go? What are you grateful for? What could be better tomorrow?"
         className="min-h-[120px] resize-none bg-white/80 backdrop-blur-sm border-gray-200 focus:border-amber-300 focus:ring-amber-200 transition-all"
       />
-      <Button
-        onClick={() => {
-          onSubmit();
-          setIsEditing(false);
-        }}
-        size="sm"
-        disabled={!value.trim()}
-        className="bg-gradient-to-r from-gray-900 to-gray-700 hover:from-gray-800 hover:to-gray-600 gap-2"
-      >
-        <Check className="h-4 w-4" />
-        {submitted ? 'Update Journal' : 'Submit Journal'}
-      </Button>
+      <div className="flex gap-2">
+        {onSave && (
+          <Button
+            onClick={() => onSave()}
+            variant="outline"
+            size="sm"
+            disabled={!value.trim()}
+            className="gap-2"
+          >
+            Save Draft
+          </Button>
+        )}
+        <Button
+          onClick={() => {
+            onSubmit();
+            setIsEditing(false);
+          }}
+          size="sm"
+          disabled={!value.trim()}
+          className="bg-gradient-to-r from-gray-900 to-gray-700 hover:from-gray-800 hover:to-gray-600 gap-2"
+        >
+          <Check className="h-4 w-4" />
+          {submitted ? 'Update Journal' : 'Submit Journal'}
+        </Button>
+      </div>
     </motion.div>
   );
 }

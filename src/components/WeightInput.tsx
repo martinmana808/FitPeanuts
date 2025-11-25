@@ -23,34 +23,36 @@ export function WeightInput({ value, onChange, userName }: WeightInputProps) {
   const isCompleted = value !== null;
 
   return (
-    <div className="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={decrement}
-        className="h-8 w-8 p-0 hover:bg-gray-100 rounded-lg transition-colors"
-      >
-        <Minus className="h-3.5 w-3.5" />
-      </Button>
+    <div className="">
       <motion.div 
         animate={{ 
           opacity: isCompleted ? 1 : 0.4,
           scale: isCompleted ? 1 : 0.98
         }}
         transition={{ duration: 0.2 }}
-        className="min-w-[70px] text-center font-medium"
+        className="min-w-[70px] text-center font-medium w-100"
       >
-        <div className="text-base">{currentWeight.toFixed(1)}</div>
-        <div className="text-xs text-gray-400">kg</div>
+        <div className="text-2xl">{currentWeight.toFixed(1)}</div>
+        {/* <div className="text-xs text-gray-400">kg</div> */} 
       </motion.div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={increment}
-        className="h-8 w-8 p-0 hover:bg-gray-100 rounded-lg transition-colors"
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </Button>
+      <div className="flex items-center gap-1 justify-center">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={decrement}
+          className="h-8 w-8 p-0 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <Minus className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={increment}
+          className="h-8 w-8 p-0 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }

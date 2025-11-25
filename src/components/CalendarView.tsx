@@ -246,7 +246,7 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
       </div>
 
       {/* Calendar Grid */}
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
           <div key={day} className="text-center text-sm text-gray-500 pb-2">
             {day}
@@ -276,7 +276,7 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
               key={day}
               onClick={() => handleDayClick(day)}
               className={`aspect-square border rounded flex items-center justify-center hover:border-gray-400 transition-colors ${colorClass} ${
-                isToday ? 'ring-2 ring-black' : ''
+                isToday ? 'ring-2 ring-black z-50' : ''
               }`}
             >
               {day}

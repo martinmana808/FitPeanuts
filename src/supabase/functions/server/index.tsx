@@ -35,7 +35,44 @@ app.post('/make-server-f0bd5752/household/create', async (c) => {
       code,
       user1Name: user1Name || 'Martin',
       user2Name: user2Name || 'Elise',
-      customHabits: [],
+      customHabits: [
+        {
+          id: 'habit_morning_shower',
+          name: 'Morning shower',
+          assignedTo: 'both',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'habit_brush_teeth_1',
+          name: 'Brush teeth',
+          assignedTo: 'both',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'habit_walk_10k_steps',
+          name: 'Walk 10k steps',
+          assignedTo: 'both',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'habit_gym',
+          name: 'Gym',
+          assignedTo: 'both',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'habit_eat_sharp',
+          name: 'Eat sharp',
+          assignedTo: 'both',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'habit_brush_teeth_2',
+          name: 'Brush teeth',
+          assignedTo: 'both',
+          createdAt: new Date().toISOString()
+        }
+      ],
       createdAt: new Date().toISOString()
     };
     
@@ -45,7 +82,7 @@ app.post('/make-server-f0bd5752/household/create', async (c) => {
     const todayKey = getTodayKey();
     const todayData = {
       date: todayKey,
-      weight: { user1: null, user2: null },
+      weight: { user1: 88.1, user2: 55.5 },
       steps: { user1: 0, user2: 0 },
       journal: '',
       journalSubmitted: false,
@@ -251,21 +288,85 @@ app.post('/make-server-f0bd5752/household/:code/habits/add', async (c) => {
   }
 });
 
+// Update custom habit
+app.put('/make-server-f0bd5752/household/:code/habits/:habitId', async (c) => {
+  try {
+    const code = c.req.param('code');
+    const habitId = c.req.param('habitId');
+    const { name, assignedTo } = await c.req.json();
+
+    const config = await kv.get(`household:${code}:config`);
+
+    if (!config) {
+      return c.json({ success: false, error: 'Household not found' }, 404);
+    }
+
+    const habitIndex = config.customHabits.findIndex((h: any) => h.id === habitId);
+    if (habitIndex === -1) {
+      return c.json({ success: false, error: 'Habit not found' }, 404);
+    }
+
+    config.customHabits[habitIndex] = {
+      ...config.customHabits[habitIndex],
+      name,
+      assignedTo
+    };
+
+    await kv.set(`household:${code}:config`, config);
+
+    return c.json({ success: true, config });
+  } catch (error) {
+    console.error('Error updating habit:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Reorder custom habits
+app.put('/make-server-f0bd5752/household/:code/habits/reorder', async (c) => {
+  try {
+    const code = c.req.param('code');
+    const { habits } = await c.req.json();
+
+    const config = await kv.get(`household:${code}:config`);
+
+    if (!config) {
+      return c.json({ success: false, error: 'Household not found' }, 404);
+    }
+
+    // Update the order of habits based on the provided array
+    const reorderedHabits = habits.map((habitUpdate: any) => {
+      const habit = config.customHabits.find((h: any) => h.id === habitUpdate.id);
+      if (habit) {
+        return { ...habit, order: habitUpdate.order };
+      }
+      return null;
+    }).filter(Boolean);
+
+    config.customHabits = reorderedHabits;
+    await kv.set(`household:${code}:config`, config);
+
+    return c.json({ success: true, config });
+  } catch (error) {
+    console.error('Error reordering habits:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
 // Delete custom habit
 app.delete('/make-server-f0bd5752/household/:code/habits/:habitId', async (c) => {
   try {
     const code = c.req.param('code');
     const habitId = c.req.param('habitId');
-    
+
     const config = await kv.get(`household:${code}:config`);
-    
+
     if (!config) {
       return c.json({ success: false, error: 'Household not found' }, 404);
     }
-    
+
     config.customHabits = config.customHabits.filter((h: any) => h.id !== habitId);
     await kv.set(`household:${code}:config`, config);
-    
+
     return c.json({ success: true, config });
   } catch (error) {
     console.error('Error deleting habit:', error);
@@ -293,15 +394,39 @@ app.get('/make-server-f0bd5752/household/:code/calendar/:year/:month', async (c)
   }
 });
 
+// Update household config
+app.put('/make-server-f0bd5752/household/:code/config', async (c) => {
+  try {
+    const code = c.req.param('code');
+    const updates = await c.req.json();
+
+    const config = await kv.get(`household:${code}:config`);
+
+    if (!config) {
+      return c.json({ success: false, error: 'Household not found' }, 404);
+    }
+
+    // Merge updates
+    Object.assign(config, updates);
+
+    await kv.set(`household:${code}:config`, config);
+
+    return c.json({ success: true, config });
+  } catch (error) {
+    console.error('Error updating config:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
 // Update historical day data
 app.post('/make-server-f0bd5752/household/:code/day/:date', async (c) => {
   try {
     const code = c.req.param('code');
     const date = c.req.param('date');
     const updates = await c.req.json();
-    
+
     let dayData = await kv.get(`household:${code}:day:${date}`);
-    
+
     if (!dayData) {
       // Create if doesn't exist
       dayData = {
@@ -313,12 +438,12 @@ app.post('/make-server-f0bd5752/household/:code/day/:date', async (c) => {
         habits: {}
       };
     }
-    
+
     // Merge updates
     Object.assign(dayData, updates);
-    
+
     await kv.set(`household:${code}:day:${date}`, dayData);
-    
+
     return c.json({ success: true, data: dayData });
   } catch (error) {
     console.error('Error updating historical day:', error);
