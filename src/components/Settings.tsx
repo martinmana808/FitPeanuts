@@ -3,7 +3,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
-import { Trash2, Edit2, Check, X } from 'lucide-react';
+import { Trash2, Edit2, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface Config {
   user1Name: string;
@@ -223,6 +223,88 @@ export function Settings({ householdCode, identity }: SettingsProps) {
     }
   };
 
+  const moveHabitUp = async (habitId: string) => {
+    if (!config) return;
+
+    const currentIndex = config.customHabits.findIndex(h => h.id === habitId);
+    if (currentIndex <= 0) return;
+
+    const newHabits = [...config.customHabits];
+    [newHabits[currentIndex], newHabits[currentIndex - 1]] = [newHabits[currentIndex - 1], newHabits[currentIndex]];
+
+    // Update orders
+    newHabits.forEach((habit, index) => {
+      habit.order = index;
+    });
+
+    try {
+      const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
+
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/habits/reorder`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicAnonKey}`
+          },
+          body: JSON.stringify({
+            habits: newHabits.map(h => ({ id: h.id, order: h.order }))
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setConfig(result.config);
+      }
+    } catch (error) {
+      console.error('Error reordering habits:', error);
+    }
+  };
+
+  const moveHabitDown = async (habitId: string) => {
+    if (!config) return;
+
+    const currentIndex = config.customHabits.findIndex(h => h.id === habitId);
+    if (currentIndex >= config.customHabits.length - 1) return;
+
+    const newHabits = [...config.customHabits];
+    [newHabits[currentIndex], newHabits[currentIndex + 1]] = [newHabits[currentIndex + 1], newHabits[currentIndex]];
+
+    // Update orders
+    newHabits.forEach((habit, index) => {
+      habit.order = index;
+    });
+
+    try {
+      const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
+
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/habits/reorder`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicAnonKey}`
+          },
+          body: JSON.stringify({
+            habits: newHabits.map(h => ({ id: h.id, order: h.order }))
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setConfig(result.config);
+      }
+    } catch (error) {
+      console.error('Error reordering habits:', error);
+    }
+  };
+
 
   if (loading || !config) {
     return (
@@ -243,14 +325,14 @@ export function Settings({ householdCode, identity }: SettingsProps) {
       <Card>
         <CardHeader>
           <CardTitle>Profile Pictures</CardTitle>
-          <CardDescription>
+          {/* <CardDescription>
             Upload profile pictures for you and your partner
-          </CardDescription>
+          </CardDescription> */}
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col items-center space-y-2">
-              <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
+              <div className="aspect-square w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
                 {config.user1Avatar ? (
                   <img src={config.user1Avatar} alt={config.user1Name} className="w-full h-full object-cover" />
                 ) : (
@@ -262,15 +344,15 @@ export function Settings({ householdCode, identity }: SettingsProps) {
                 type="file"
                 accept="image/*"
                 onChange={(e) => handleAvatarUpload('user1', e.target.files?.[0])}
-                className="text-xs"
+                className="text-xs avatar-input"
                 id="user1-avatar"
               />
               <label htmlFor="user1-avatar" className="text-xs text-blue-600 cursor-pointer hover:underline">
-                Change photo
+                Add/Change photo
               </label>
             </div>
             <div className="flex flex-col items-center space-y-2">
-              <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
+              <div className="aspect-square w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
                 {config.user2Avatar ? (
                   <img src={config.user2Avatar} alt={config.user2Name} className="w-full h-full object-cover" />
                 ) : (
@@ -282,11 +364,11 @@ export function Settings({ householdCode, identity }: SettingsProps) {
                 type="file"
                 accept="image/*"
                 onChange={(e) => handleAvatarUpload('user2', e.target.files?.[0])}
-                className="text-xs"
+                className="text-xs avatar-input"
                 id="user2-avatar"
               />
               <label htmlFor="user2-avatar" className="text-xs text-blue-600 cursor-pointer hover:underline">
-                Change photo
+                Add/Change photo
               </label>
             </div>
           </div>
@@ -300,11 +382,11 @@ export function Settings({ householdCode, identity }: SettingsProps) {
             <CardTitle>Custom Habits</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="">
               {config.customHabits.map((habit) => (
                 <div
                   key={habit.id}
-                  className="p-3 border rounded"
+                  className="pt-4 mt-4 border-t rounded custom-habit-settings"
                 >
                   {editingHabitId === habit.id ? (
                     <div className="space-y-3">
@@ -374,7 +456,23 @@ export function Settings({ householdCode, identity }: SettingsProps) {
                             : config.user2Name}
                         </div>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => moveHabitUp(habit.id)}
+                          disabled={config.customHabits.findIndex(h => h.id === habit.id) === 0}
+                        >
+                          <ChevronUp className="h-4 w-4 text-gray-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => moveHabitDown(habit.id)}
+                          disabled={config.customHabits.findIndex(h => h.id === habit.id) === config.customHabits.length - 1}
+                        >
+                          <ChevronDown className="h-4 w-4 text-gray-600" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"

@@ -8,7 +8,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
 import { motion } from 'framer-motion';
-import { Edit2, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Edit2, Trash2 } from 'lucide-react';
 
 interface TodayData {
   date: string;
@@ -59,6 +59,7 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
   const [newHabitAssignedTo, setNewHabitAssignedTo] = useState<'user1' | 'user2' | 'both'>('both');
   const [localJournalValue, setLocalJournalValue] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [lastKnownJournalSubmitted, setLastKnownJournalSubmitted] = useState(false);
 
   // localStorage key for journal drafts
   const getJournalDraftKey = () => `journal_draft_${householdCode}_${getTodayKey()}`;
@@ -191,16 +192,20 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
           }
         }
 
-        // Handle journal updates - only update if not submitted and no local changes
-        const hasLocalDraft = loadJournalDraft();
-        const shouldUpdateJournal = !todayData.journalSubmitted && !hasUnsavedChanges && !hasLocalDraft;
+        // Handle journal updates - only override if server shows new submission
+        const serverJournalSubmitted = todayData.journalSubmitted;
 
-        if (shouldUpdateJournal) {
+        // If server shows journal was submitted and we haven't processed this yet
+        if (serverJournalSubmitted && !lastKnownJournalSubmitted) {
           setLocalJournalValue(todayData.journal || '');
-        } else if (!hasUnsavedChanges && hasLocalDraft) {
-          // Load draft if no unsaved changes
-          setLocalJournalValue(hasLocalDraft);
+          setHasUnsavedChanges(false);
+          setLastKnownJournalSubmitted(true);
+          clearJournalDraft();
+        } else if (!serverJournalSubmitted && lastKnownJournalSubmitted) {
+          // Reset if server shows it's no longer submitted (edge case)
+          setLastKnownJournalSubmitted(false);
         }
+        // Otherwise, preserve local content (don't override while typing)
 
         // Load local avatars
         const user1AvatarKey = `avatar_${householdCode}_user1`;
@@ -289,6 +294,7 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
         if (submitted) {
           clearJournalDraft();
           setHasUnsavedChanges(false);
+          setLastKnownJournalSubmitted(true);
         }
       }
     } catch (error) {
@@ -486,87 +492,6 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
     }
   };
 
-  const moveHabitUp = async () => {
-    if (!editingHabit || !config) return;
-
-    const currentIndex = config.customHabits.findIndex(h => h.id === editingHabit.id);
-    if (currentIndex <= 0) return;
-
-    const newHabits = [...config.customHabits];
-    [newHabits[currentIndex], newHabits[currentIndex - 1]] = [newHabits[currentIndex - 1], newHabits[currentIndex]];
-
-    // Update orders
-    newHabits.forEach((habit, index) => {
-      habit.order = index;
-    });
-
-    try {
-      const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
-
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/habits/reorder`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
-          },
-          body: JSON.stringify({
-            habits: newHabits.map(h => ({ id: h.id, order: h.order }))
-          })
-        }
-      );
-
-      const result = await response.json();
-
-      if (result.success) {
-        setConfig(result.config);
-      }
-    } catch (error) {
-      console.error('Error reordering habits:', error);
-    }
-  };
-
-  const moveHabitDown = async () => {
-    if (!editingHabit || !config) return;
-
-    const currentIndex = config.customHabits.findIndex(h => h.id === editingHabit.id);
-    if (currentIndex >= config.customHabits.length - 1) return;
-
-    const newHabits = [...config.customHabits];
-    [newHabits[currentIndex], newHabits[currentIndex + 1]] = [newHabits[currentIndex + 1], newHabits[currentIndex]];
-
-    // Update orders
-    newHabits.forEach((habit, index) => {
-      habit.order = index;
-    });
-
-    try {
-      const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
-
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/habits/reorder`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
-          },
-          body: JSON.stringify({
-            habits: newHabits.map(h => ({ id: h.id, order: h.order }))
-          })
-        }
-      );
-
-      const result = await response.json();
-
-      if (result.success) {
-        setConfig(result.config);
-      }
-    } catch (error) {
-      console.error('Error reordering habits:', error);
-    }
-  };
 
   if (loading || !todayData || !config) {
     return (
@@ -623,7 +548,7 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
   const progress = calculateProgress();
 
   return (
-    <div className="max-w-4xl mx-auto p-4 pb-24 pt-8">
+    <div className="max-w-4xl mx-auto p-4 pb-8 pt-8">
       {/* Elegant Header */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
@@ -846,7 +771,7 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
       </motion.div>
 
       {/* Info note about steps */}
-      <motion.div
+      {/* <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
@@ -854,7 +779,7 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
       >
         <strong>Note:</strong> Apple Health integration is not available in this prototype.
         Update your steps manually via Settings.
-      </motion.div>
+      </motion.div> */}
       <div className="p-4 text-center text-sm text-gray-400 font-mono">{householdCode}</div>
 
       {/* Edit Habit Modal */}
@@ -871,6 +796,7 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
                 value={editHabitName}
                 onChange={(e) => setEditHabitName(e.target.value)}
                 placeholder="Enter habit name"
+                className="mt-2"
               />
             </div>
             <div>
@@ -900,27 +826,21 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={moveHabitUp} disabled={!config || config.customHabits.findIndex(h => h.id === editingHabit?.id) === 0}>
-                <ChevronUp className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={moveHabitDown} disabled={!config || config.customHabits.findIndex(h => h.id === editingHabit?.id) === config.customHabits.length - 1}>
-                <ChevronDown className="h-4 w-4" />
-              </Button>
+          <div className="">
+            <div className="mt-6">
+              <DialogFooter>
+                <Button onClick={updateHabit} disabled={!editHabitName.trim()}>
+                  Save
+                </Button>
+                <Button variant="outline" onClick={closeEditHabit}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={deleteHabit} className="gap-2">
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              </DialogFooter>
             </div>
-            <DialogFooter>
-              <Button variant="destructive" onClick={deleteHabit} className="gap-2">
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </Button>
-              <Button variant="outline" onClick={closeEditHabit}>
-                Cancel
-              </Button>
-              <Button onClick={updateHabit} disabled={!editHabitName.trim()}>
-                Save
-              </Button>
-            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
