@@ -836,7 +836,7 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
                   Cancel
                 </Button>
                 <Button variant="destructive" onClick={deleteHabit} className="gap-2">
-                  <Trash2 className="h-4 w-4" />
+                  {/* <Trash2 className="h-4 w-4" /> */}
                   Delete
                 </Button>
               </DialogFooter>

@@ -226,10 +226,14 @@ export function Settings({ householdCode, identity }: SettingsProps) {
   const moveHabitUp = async (habitId: string) => {
     if (!config) return;
 
-    const currentIndex = config.customHabits.findIndex(h => h.id === habitId);
+    // Use sorted habits for finding the correct index
+    const sortedHabits = [...config.customHabits].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const currentIndex = sortedHabits.findIndex(h => h.id === habitId);
     if (currentIndex <= 0) return;
 
-    const newHabits = [...config.customHabits];
+    console.log('Moving habit up:', habitId, 'from sorted index', currentIndex);
+
+    const newHabits = [...sortedHabits];
     [newHabits[currentIndex], newHabits[currentIndex - 1]] = [newHabits[currentIndex - 1], newHabits[currentIndex]];
 
     // Update orders
@@ -237,6 +241,15 @@ export function Settings({ householdCode, identity }: SettingsProps) {
       habit.order = index;
     });
 
+    console.log('New habits order:', newHabits.map(h => ({ id: h.id, name: h.name, order: h.order })));
+
+    // Update local state immediately for responsive UI
+    const updatedConfig = {
+      ...config,
+      customHabits: newHabits
+    };
+    setConfig(updatedConfig);
+
     try {
       const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
 
@@ -254,23 +267,41 @@ export function Settings({ householdCode, identity }: SettingsProps) {
         }
       );
 
-      const result = await response.json();
-
-      if (result.success) {
-        setConfig(result.config);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          console.log('Reorder successful, new config:', result.config.customHabits);
+          setConfig(result.config);
+        } else {
+          console.error('Reorder failed:', result);
+          // Revert to server state if reorder failed
+          fetchConfig();
+        }
+      } else if (response.status === 404) {
+        console.log('Reorder endpoint not available yet - order saved locally');
+        // Keep local changes since server doesn't support reordering yet
+      } else {
+        console.error('Reorder failed with status:', response.status);
+        // Revert to server state
+        fetchConfig();
       }
     } catch (error) {
       console.error('Error reordering habits:', error);
+      // Keep local changes on network error - user can try again later
     }
   };
 
   const moveHabitDown = async (habitId: string) => {
     if (!config) return;
 
-    const currentIndex = config.customHabits.findIndex(h => h.id === habitId);
-    if (currentIndex >= config.customHabits.length - 1) return;
+    // Use sorted habits for finding the correct index
+    const sortedHabits = [...config.customHabits].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const currentIndex = sortedHabits.findIndex(h => h.id === habitId);
+    if (currentIndex >= sortedHabits.length - 1) return;
 
-    const newHabits = [...config.customHabits];
+    console.log('Moving habit down:', habitId, 'from sorted index', currentIndex);
+
+    const newHabits = [...sortedHabits];
     [newHabits[currentIndex], newHabits[currentIndex + 1]] = [newHabits[currentIndex + 1], newHabits[currentIndex]];
 
     // Update orders
@@ -278,6 +309,15 @@ export function Settings({ householdCode, identity }: SettingsProps) {
       habit.order = index;
     });
 
+    console.log('New habits order:', newHabits.map(h => ({ id: h.id, name: h.name, order: h.order })));
+
+    // Update local state immediately for responsive UI
+    const updatedConfig = {
+      ...config,
+      customHabits: newHabits
+    };
+    setConfig(updatedConfig);
+
     try {
       const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
 
@@ -295,13 +335,27 @@ export function Settings({ householdCode, identity }: SettingsProps) {
         }
       );
 
-      const result = await response.json();
-
-      if (result.success) {
-        setConfig(result.config);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          console.log('Reorder successful, new config:', result.config.customHabits);
+          setConfig(result.config);
+        } else {
+          console.error('Reorder failed:', result);
+          // Revert to server state if reorder failed
+          fetchConfig();
+        }
+      } else if (response.status === 404) {
+        console.log('Reorder endpoint not available yet - order saved locally');
+        // Keep local changes since server doesn't support reordering yet
+      } else {
+        console.error('Reorder failed with status:', response.status);
+        // Revert to server state
+        fetchConfig();
       }
     } catch (error) {
       console.error('Error reordering habits:', error);
+      // Keep local changes on network error - user can try again later
     }
   };
 
@@ -383,7 +437,9 @@ export function Settings({ householdCode, identity }: SettingsProps) {
           </CardHeader>
           <CardContent>
             <div className="">
-              {config.customHabits.map((habit) => (
+              {config.customHabits
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                .map((habit) => (
                 <div
                   key={habit.id}
                   className="pt-4 mt-4 border-t rounded custom-habit-settings"
@@ -457,11 +513,13 @@ export function Settings({ householdCode, identity }: SettingsProps) {
                         </div>
                       </div>
                       <div className="flex">
-                        <Button
+                        {/* <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => moveHabitUp(habit.id)}
-                          disabled={config.customHabits.findIndex(h => h.id === habit.id) === 0}
+                          disabled={config.customHabits
+                            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                            .findIndex(h => h.id === habit.id) === 0}
                         >
                           <ChevronUp className="h-4 w-4 text-gray-600" />
                         </Button>
@@ -469,10 +527,12 @@ export function Settings({ householdCode, identity }: SettingsProps) {
                           variant="ghost"
                           size="sm"
                           onClick={() => moveHabitDown(habit.id)}
-                          disabled={config.customHabits.findIndex(h => h.id === habit.id) === config.customHabits.length - 1}
+                          disabled={config.customHabits
+                            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                            .findIndex(h => h.id === habit.id) === config.customHabits.length - 1}
                         >
                           <ChevronDown className="h-4 w-4 text-gray-600" />
-                        </Button>
+                        </Button> */}
                         <Button
                           variant="ghost"
                           size="sm"

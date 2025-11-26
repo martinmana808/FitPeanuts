@@ -2520,3 +2520,7 @@ html {
  .custom-habit-settings:first-child{
   margin-top: 0;
 }
+.dialog-footer button{
+  flex-shrink: initial;
+  flex-basis: 33.33%;
+}

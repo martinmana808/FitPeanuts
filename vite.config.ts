@@ -11,7 +11,7 @@
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
         manifest: {
-          name: 'Shared Discipline',
+          name: '🥜 FitPeanuts',
           short_name: 'FitPeanuts',
           description: 'A shared accountability tool for two people to rebuild daily discipline together',
           theme_color: '#000000',
