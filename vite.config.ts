@@ -12,6 +12,9 @@
         strategies: 'injectManifest',
         srcDir: 'src',
         filename: 'sw.js',
+        injectManifest: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        },
         includeAssets: ['icon.svg'],
         manifest: {
           name: '🥜 FitPeanuts',
@@ -72,9 +75,6 @@
               purpose: 'maskable'
             }
           ]
-        },
-        workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg}']
         }
       })
     ],
