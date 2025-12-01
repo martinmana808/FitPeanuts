@@ -3,7 +3,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
-import { ArrowLeft, Plus, Trash2, GripVertical, Save, Check, AlertCircle, Loader2, Edit2, X } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, GripVertical, Save, Check, AlertCircle, Loader2, Edit2, X, Bell } from 'lucide-react';
 
 interface Config {
   user1Name: string;
@@ -33,6 +33,74 @@ export function Settings({ householdCode, identity }: SettingsProps) {
   const [groqApiKey, setGroqApiKey] = useState('');
   const [verifyingKey, setVerifyingKey] = useState(false);
   const [keyStatus, setKeyStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
+  const [notificationStatus, setNotificationStatus] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
+  const [subscribing, setSubscribing] = useState(false);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setNotificationStatus('unsupported');
+      return;
+    }
+    setNotificationStatus(Notification.permission);
+  }, []);
+
+  const subscribeToNotifications = async () => {
+    if (!('serviceWorker' in navigator)) return;
+
+    setSubscribing(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      
+      // VAPID Public Key
+      const publicKey = 'BEaZDWo5FEqHAuf-XqtxVIrC9wabbdVqkhAtmyPOLUoFgjePYRE6Y5GP4UiCWmKzEHZPH_CzmyK4CMNZZIp6O9Y';
+      
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+
+      // Send subscription to backend
+      const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
+      
+      await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/notifications/subscribe`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicAnonKey}`
+          },
+          body: JSON.stringify({
+            subscription,
+            userId: identity
+          })
+        }
+      );
+
+      setNotificationStatus('granted');
+      alert('Notifications enabled successfully!');
+    } catch (error) {
+      console.error('Error subscribing to notifications:', error);
+      alert('Failed to enable notifications. Please try again.');
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/');
+  
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+  
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
 
   const fetchConfig = async () => {
     try {
@@ -527,6 +595,45 @@ export function Settings({ householdCode, identity }: SettingsProps) {
               </label>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Notifications */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications</CardTitle>
+          <CardDescription>
+            Get reminded about your daily habits
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {notificationStatus === 'unsupported' ? (
+            <div className="text-sm text-gray-500">
+              Notifications are not supported on this device. Try adding the app to your home screen.
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                {notificationStatus === 'granted' 
+                  ? 'Notifications are enabled' 
+                  : 'Enable push notifications'}
+              </div>
+              <Button
+                onClick={subscribeToNotifications}
+                disabled={notificationStatus === 'granted' || subscribing}
+                variant={notificationStatus === 'granted' ? 'outline' : 'default'}
+              >
+                {subscribing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : notificationStatus === 'granted' ? (
+                  <Check className="h-4 w-4 mr-2" />
+                ) : (
+                  <Bell className="h-4 w-4 mr-2" />
+                )}
+                {notificationStatus === 'granted' ? 'Enabled' : 'Enable'}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

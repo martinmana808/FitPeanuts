@@ -1,6 +1,7 @@
 import { Hono } from 'npm:hono';
 import { cors } from 'npm:hono/cors';
 import { logger } from 'npm:hono/logger';
+import webpush from 'npm:web-push';
 import * as kv from './kv_store.ts';
 
 const app = new Hono();
@@ -447,6 +448,78 @@ app.post('/make-server-f0bd5752/household/:code/day/:date', async (c) => {
     return c.json({ success: true, data: dayData });
   } catch (error) {
     console.error('Error updating historical day:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Subscribe to notifications
+app.post('/make-server-f0bd5752/household/:code/notifications/subscribe', async (c) => {
+  try {
+    const code = c.req.param('code');
+    const { subscription, userId } = await c.req.json();
+    
+    // Store subscription
+    // We use a list of subscriptions for the household
+    const subscriptionsKey = `household:${code}:subscriptions`;
+    let subscriptions = await kv.get(subscriptionsKey) || [];
+    
+    // Remove existing subscription for this endpoint if any (to avoid duplicates)
+    subscriptions = subscriptions.filter((s: any) => s.endpoint !== subscription.endpoint);
+    
+    // Add new subscription
+    subscriptions.push({ ...subscription, userId, createdAt: new Date().toISOString() });
+    
+    await kv.set(subscriptionsKey, subscriptions);
+    
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error subscribing:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Send notification (Protected or Internal)
+app.post('/make-server-f0bd5752/household/:code/notifications/send', async (c) => {
+  try {
+    const code = c.req.param('code');
+    const { title, body, url } = await c.req.json();
+    
+    const subscriptionsKey = `household:${code}:subscriptions`;
+    const subscriptions = await kv.get(subscriptionsKey) || [];
+    
+    if (subscriptions.length === 0) {
+      return c.json({ success: true, message: 'No subscriptions found' });
+    }
+
+    // VAPID Keys
+    const vapidKeys = {
+      publicKey: 'BEaZDWo5FEqHAuf-XqtxVIrC9wabbdVqkhAtmyPOLUoFgjePYRE6Y5GP4UiCWmKzEHZPH_CzmyK4CMNZZIp6O9Y',
+      privateKey: 'JUAwHnNOVCDXWbnmQGl6lWbuVzC_HTf3uOkqCg8rU3E'
+    };
+
+    webpush.setVapidDetails(
+      'mailto:example@yourdomain.org',
+      vapidKeys.publicKey,
+      vapidKeys.privateKey
+    );
+
+    const results = await Promise.all(subscriptions.map(async (sub: any) => {
+      try {
+        await webpush.sendNotification(sub, JSON.stringify({ title, body, url }));
+        return { success: true, endpoint: sub.endpoint };
+      } catch (error) {
+        console.error('Error sending notification:', error);
+        // If 410 Gone, remove subscription
+        if (error.statusCode === 410) {
+           // We'll handle cleanup separately or just ignore for now
+        }
+        return { success: false, error: String(error) };
+      }
+    }));
+
+    return c.json({ success: true, results });
+  } catch (error) {
+    console.error('Error sending notification:', error);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });

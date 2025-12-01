@@ -9,6 +9,9 @@
       react(),
       VitePWA({
         registerType: 'autoUpdate',
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.js',
         includeAssets: ['icon.svg'],
         manifest: {
           name: '🥜 FitPeanuts',
