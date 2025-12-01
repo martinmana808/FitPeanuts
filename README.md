@@ -1,6 +1,7 @@
 ## TO DO ##
 - touch the user avatar, send them hearts <3 
 - move up move down writes to supabase
+- streaks not working
 
   # Shared Daily Discipline App
 

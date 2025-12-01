@@ -3,17 +3,19 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Label } from './ui/label';
-import { Trash2, Edit2, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, GripVertical, Save, Check, AlertCircle, Loader2, Edit2, X } from 'lucide-react';
 
 interface Config {
   user1Name: string;
   user2Name: string;
   user1Avatar?: string;
   user2Avatar?: string;
+  groqApiKey?: string;
   customHabits: Array<{
     id: string;
     name: string;
     assignedTo: 'user1' | 'user2' | 'both';
+    order?: number;
   }>;
 }
 
@@ -28,6 +30,9 @@ export function Settings({ householdCode, identity }: SettingsProps) {
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
   const [editHabitName, setEditHabitName] = useState('');
   const [editAssignedTo, setEditAssignedTo] = useState<'user1' | 'user2' | 'both'>('both');
+  const [groqApiKey, setGroqApiKey] = useState('');
+  const [verifyingKey, setVerifyingKey] = useState(false);
+  const [keyStatus, setKeyStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
 
   const fetchConfig = async () => {
     try {
@@ -45,7 +50,27 @@ export function Settings({ householdCode, identity }: SettingsProps) {
       const result = await response.json();
       
       if (result.success) {
-        setConfig(result.config);
+        let config = result.config;
+
+        // Load local avatars
+        const user1AvatarKey = `avatar_${householdCode}_user1`;
+        const user2AvatarKey = `avatar_${householdCode}_user2`;
+        const localUser1Avatar = localStorage.getItem(user1AvatarKey);
+        const localUser2Avatar = localStorage.getItem(user2AvatarKey);
+
+        if (localUser1Avatar) {
+          config.user1Avatar = localUser1Avatar;
+        }
+        if (localUser2Avatar) {
+          config.user2Avatar = localUser2Avatar;
+        }
+        
+        if (config.groqApiKey) {
+          setGroqApiKey(config.groqApiKey);
+          setKeyStatus('valid'); // Assume valid if loaded from server, or we could re-verify
+        }
+
+        setConfig(config);
       }
     } catch (error) {
       console.error('Error fetching config:', error);
@@ -58,6 +83,77 @@ export function Settings({ householdCode, identity }: SettingsProps) {
     fetchConfig();
   }, [householdCode]);
 
+  const verifyApiKey = async (key: string) => {
+    if (!key.trim()) return;
+    
+    setVerifyingKey(true);
+    setKeyStatus('validating');
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'user', content: 'ping' }
+          ],
+          max_tokens: 1
+        })
+      });
+
+      if (response.ok) {
+        setKeyStatus('valid');
+        saveApiKey(key);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Verification failed:', errorData);
+        setKeyStatus('invalid');
+        alert(`Verification failed: ${errorData.error?.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error verifying key:', error);
+      setKeyStatus('invalid');
+      alert(`Error verifying key: ${String(error)}`);
+    } finally {
+      setVerifyingKey(false);
+    }
+  };
+
+  const saveApiKey = async (key: string) => {
+    if (!config) return;
+
+    try {
+      const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
+      
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/config`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicAnonKey}`
+          },
+          body: JSON.stringify({ groqApiKey: key })
+        }
+      );
+      
+      const result = await response.json();
+      if (result.success) {
+        setConfig(result.config);
+      }
+    } catch (error) {
+      console.error('Error saving API key:', error);
+    }
+  };
+
+  const handleApiKeyChange = (value: string) => {
+    setGroqApiKey(value);
+    setKeyStatus('idle');
+  };
 
   const startEditHabit = (habit: Config['customHabits'][0]) => {
     setEditingHabitId(habit.id);
@@ -214,6 +310,11 @@ export function Settings({ householdCode, identity }: SettingsProps) {
         }
         if (localUser2Avatar) {
           config.user2Avatar = localUser2Avatar;
+        }
+        
+        if (config.groqApiKey) {
+          setGroqApiKey(config.groqApiKey);
+          setKeyStatus('valid');
         }
 
         setConfig(config);
@@ -425,6 +526,60 @@ export function Settings({ householdCode, identity }: SettingsProps) {
                 Add/Change photo
               </label>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* AI Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>AI Configuration</CardTitle>
+          <CardDescription>
+            Configure AI features for journal assistance
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="groq-key">Groq API Key</Label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  id="groq-key"
+                  type="password"
+                  value={groqApiKey}
+                  onChange={(e) => handleApiKeyChange(e.target.value)}
+                  placeholder="gsk_..."
+                  className={keyStatus === 'valid' ? 'border-green-500 focus-visible:ring-green-500' : keyStatus === 'invalid' ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                />
+                {keyStatus === 'valid' && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500">
+                    <Check className="h-4 w-4" />
+                  </div>
+                )}
+              </div>
+              <Button 
+                onClick={() => verifyApiKey(groqApiKey)}
+                disabled={verifyingKey || !groqApiKey.trim()}
+                variant={keyStatus === 'valid' ? 'outline' : 'default'}
+                className={keyStatus === 'valid' ? 'text-green-600 border-green-200 hover:bg-green-50' : ''}
+              >
+                {verifyingKey ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : keyStatus === 'valid' ? (
+                  'Verified'
+                ) : (
+                  'Verify'
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-gray-500 flex items-center gap-1">
+              {keyStatus === 'invalid' && (
+                <span className="text-red-500 flex items-center gap-1 mr-1">
+                  <AlertCircle className="h-3 w-3" /> Invalid key.
+                </span>
+              )}
+              Required for "Tidy with AI" feature. Key is stored securely in your household database.
+            </p>
           </div>
         </CardContent>
       </Card>

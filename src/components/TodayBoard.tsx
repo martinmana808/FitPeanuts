@@ -24,6 +24,7 @@ interface Config {
   user2Name: string;
   user1Avatar?: string;
   user2Avatar?: string;
+  groqApiKey?: string;
   customHabits: Array<{
     id: string;
     name: string;
@@ -749,6 +750,7 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
             onChange={handleJournalChange}
             onSave={() => saveJournalDraft(localJournalValue)}
             onSubmit={() => updateJournal(localJournalValue, true)}
+            apiKey={config.groqApiKey}
           />
         </div>
 

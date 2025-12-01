@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Textarea } from './ui/textarea';
@@ -20,6 +20,8 @@ interface DayData {
 interface Config {
   user1Name: string;
   user2Name: string;
+  user2Avatar?: string;
+  groqApiKey?: string;
   customHabits: Array<{
     id: string;
     name: string;
@@ -37,35 +39,92 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
   const [monthData, setMonthData] = useState<Record<string, DayData>>({});
   const [config, setConfig] = useState<Config | null>(null);
   const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
+  const [draftDay, setDraftDay] = useState<DayData | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isTidying, setIsTidying] = useState(false);
+
+  const tidyJournal = async () => {
+    const apiKey = config?.groqApiKey;
+    if (!apiKey || !draftDay?.journal.trim()) return;
+
+    setIsTidying(true);
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful assistant that tidies up journal entries. Fix grammar, spelling, and punctuation. Make the tone calm and reflective. Keep the meaning exactly the same. Do not add any conversational filler. Just return the tidied text.'
+            },
+            {
+              role: 'user',
+              content: draftDay.journal
+            }
+          ]
+        })
+      });
+
+      const data = await response.json();
+      if (data.choices && data.choices[0]?.message?.content) {
+        setDraftDay({
+          ...draftDay,
+          journal: data.choices[0].message.content,
+          journalSubmitted: true
+        });
+      }
+    } catch (error) {
+      console.error('Error tidying journal:', error);
+      alert('Failed to tidy journal. Please check your API key.');
+    } finally {
+      setIsTidying(false);
+    }
+  };
 
   const fetchMonthData = async () => {
     try {
       const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
       
-      const year = currentDate.getFullYear();
-      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/calendar/${year}/${month}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+      // Calculate the 3 months to fetch (current, -1, -2)
+      const monthsToFetch = [0, 1, 2].map(offset => {
+        const d = new Date(currentDate.getFullYear(), currentDate.getMonth() - offset, 1);
+        return {
+          year: d.getFullYear(),
+          month: String(d.getMonth() + 1).padStart(2, '0')
+        };
+      });
+
+      const responses = await Promise.all(monthsToFetch.map(({ year, month }) => 
+        fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/calendar/${year}/${month}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${publicAnonKey}`
+            }
           }
+        ).then(res => res.json())
+      ));
+      
+      const dataMap: Record<string, DayData> = {};
+      let lastConfig = null;
+
+      responses.forEach(result => {
+        if (result.success) {
+          result.days.forEach((day: DayData) => {
+            dataMap[day.date] = day;
+          });
+          if (result.config) lastConfig = result.config;
         }
-      );
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        const dataMap: Record<string, DayData> = {};
-        result.days.forEach((day: DayData) => {
-          dataMap[day.date] = day;
-        });
-        setMonthData(dataMap);
-        setConfig(result.config);
-      }
+      });
+
+      setMonthData(dataMap);
+      if (lastConfig) setConfig(lastConfig);
     } catch (error) {
       console.error('Error fetching calendar data:', error);
     } finally {
@@ -161,24 +220,25 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
     };
     
     setSelectedDay(dayData);
+    setDraftDay(JSON.parse(JSON.stringify(dayData))); // Deep copy for draft
     setEditDialogOpen(true);
   };
 
-  const updateDayData = async (updates: Partial<DayData>) => {
-    if (!selectedDay) return;
+  const handleSave = async () => {
+    if (!draftDay) return;
     
     try {
       const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
       
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/day/${selectedDay.date}`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/day/${draftDay.date}`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${publicAnonKey}`
           },
-          body: JSON.stringify(updates)
+          body: JSON.stringify(draftDay)
         }
       );
       
@@ -187,9 +247,10 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
       if (result.success) {
         setMonthData((prev) => ({
           ...prev,
-          [selectedDay.date]: result.data
+          [draftDay.date]: result.data
         }));
         setSelectedDay(result.data);
+        setEditDialogOpen(false);
       }
     } catch (error) {
       console.error('Error updating day data:', error);
@@ -197,11 +258,26 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
   };
 
   const getWeightGraphData = () => {
-    return Object.values(monthData).map(day => ({
-      date: day.date,
-      user1Weight: day.weight.user1,
-      user2Weight: day.weight.user2
-    }));
+    // Get the last day of the currently viewed month
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+    
+    // Calculate 90 days ago
+    const ninetyDaysAgo = new Date(lastDayOfMonth);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    return Object.values(monthData)
+      .filter(day => {
+        const dayDate = new Date(day.date);
+        return dayDate >= ninetyDaysAgo && dayDate <= lastDayOfMonth;
+      })
+      .map(day => ({
+        date: day.date,
+        user1Weight: day.weight.user1,
+        user2Weight: day.weight.user2
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
   };
 
   const days = getDaysInMonth();
@@ -310,7 +386,7 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
           <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{selectedDay.date}</DialogTitle>
+              <DialogTitle>{draftDay?.date}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               {/* Weight */}
@@ -319,10 +395,14 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
                 <Input
                   type="number"
                   step="0.1"
-                  value={selectedDay.weight.user1 || ''}
+                  value={draftDay?.weight.user1 || ''}
                   onChange={(e) => {
+                    if (!draftDay) return;
                     const value = e.target.value ? parseFloat(e.target.value) : null;
-                    updateDayData({ weight: { ...selectedDay.weight, user1: value } });
+                    setDraftDay({
+                      ...draftDay,
+                      weight: { ...draftDay.weight, user1: value }
+                    });
                   }}
                 />
               </div>
@@ -331,24 +411,56 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
                 <Input
                   type="number"
                   step="0.1"
-                  value={selectedDay.weight.user2 || ''}
+                  value={draftDay?.weight.user2 || ''}
                   onChange={(e) => {
+                    if (!draftDay) return;
                     const value = e.target.value ? parseFloat(e.target.value) : null;
-                    updateDayData({ weight: { ...selectedDay.weight, user2: value } });
+                    setDraftDay({
+                      ...draftDay,
+                      weight: { ...draftDay.weight, user2: value }
+                    });
                   }}
                 />
               </div>
 
               {/* Journal */}
               <div>
-                <Label>Journal</Label>
+                <div className="flex justify-between items-center mb-2">
+                  <Label>Journal</Label>
+                  {config?.groqApiKey && (
+                    <Button
+                      onClick={tidyJournal}
+                      variant="ghost"
+                      size="sm"
+                      disabled={!draftDay?.journal.trim() || isTidying}
+                      className="h-6 text-xs gap-1 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                    >
+                      <Sparkles className={`h-3 w-3 ${isTidying ? 'animate-spin' : ''}`} />
+                      {isTidying ? 'Tidying...' : 'Tidy with AI'}
+                    </Button>
+                  )}
+                </div>
                 <Textarea
-                  value={selectedDay.journal}
+                  value={draftDay?.journal || ''}
                   onChange={(e) => {
-                    updateDayData({ journal: e.target.value });
+                    if (!draftDay) return;
+                    setDraftDay({
+                      ...draftDay,
+                      journal: e.target.value,
+                      journalSubmitted: !!e.target.value.trim()
+                    });
                   }}
                   className="min-h-[100px]"
                 />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSave}>
+                  Save Changes
+                </Button>
               </div>
             </div>
           </DialogContent>

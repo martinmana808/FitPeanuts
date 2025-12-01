@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
-import { Check, Edit2 } from 'lucide-react';
+import { Check, Edit2, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface JournalInputProps {
@@ -10,10 +10,50 @@ interface JournalInputProps {
   onChange: (value: string) => void;
   onSave?: () => void;
   onSubmit: () => void;
+  apiKey?: string;
 }
 
-export function JournalInput({ value, submitted, onChange, onSave, onSubmit }: JournalInputProps) {
+export function JournalInput({ value, submitted, onChange, onSave, onSubmit, apiKey }: JournalInputProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isTidying, setIsTidying] = useState(false);
+
+  const tidyJournal = async () => {
+    if (!apiKey || !value.trim()) return;
+
+    setIsTidying(true);
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful assistant that tidies up journal entries. Fix grammar, spelling, and punctuation. Make the tone calm and reflective. Keep the meaning exactly the same. Do not add any conversational filler. Just return the tidied text.'
+            },
+            {
+              role: 'user',
+              content: value
+            }
+          ]
+        })
+      });
+
+      const data = await response.json();
+      if (data.choices && data.choices[0]?.message?.content) {
+        onChange(data.choices[0].message.content);
+      }
+    } catch (error) {
+      console.error('Error tidying journal:', error);
+      alert('Failed to tidy journal. Please check your API key.');
+    } finally {
+      setIsTidying(false);
+    }
+  };
 
   if (submitted && !isEditing) {
     return (
@@ -57,6 +97,18 @@ export function JournalInput({ value, submitted, onChange, onSave, onSubmit }: J
         className="min-h-[120px] resize-none bg-white/80 backdrop-blur-sm border-gray-200 focus:border-amber-300 focus:ring-amber-200 transition-all"
       />
       <div className="flex gap-2">
+        {apiKey && !submitted && (
+          <Button
+            onClick={tidyJournal}
+            variant="outline"
+            size="sm"
+            disabled={!value.trim() || isTidying}
+            className="gap-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 border-purple-200"
+          >
+            <Sparkles className={`h-3.5 w-3.5 ${isTidying ? 'animate-spin' : ''}`} />
+            {isTidying ? 'Tidying...' : 'Tidy'}
+          </Button>
+        )}
         {onSave && (
           <Button
             onClick={() => onSave()}
