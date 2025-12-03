@@ -6,6 +6,7 @@ import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Checkbox } from './ui/checkbox';
 import { WeightGraph } from './WeightGraph';
 
 interface DayData {
@@ -421,6 +422,60 @@ export function CalendarView({ householdCode, identity }: CalendarViewProps) {
                     });
                   }}
                 />
+              </div>
+
+              {/* Habits */}
+              <div>
+                <Label className="mb-2 block">Habits</Label>
+                <div className="space-y-3">
+                  {config?.customHabits.map(habit => (
+                    <div key={habit.id} className="flex items-center justify-between p-2 border rounded">
+                      <span className="text-sm font-medium">{habit.name}</span>
+                      <div className="flex gap-4">
+                        {(habit.assignedTo === 'user1' || habit.assignedTo === 'both') && (
+                          <div className="flex items-center gap-2">
+                            <Checkbox 
+                              id={`habit-${habit.id}-user1`}
+                              checked={draftDay?.habits?.[habit.id]?.user1 || false}
+                              onCheckedChange={(checked: boolean | string) => {
+                                if (!draftDay) return;
+                                const currentHabit = draftDay.habits[habit.id] || { user1: false, user2: false };
+                                setDraftDay({
+                                  ...draftDay,
+                                  habits: {
+                                    ...draftDay.habits,
+                                    [habit.id]: { ...currentHabit, user1: checked === true }
+                                  }
+                                });
+                              }}
+                            />
+                            <Label htmlFor={`habit-${habit.id}-user1`} className="text-xs text-gray-500">{config.user1Name}</Label>
+                          </div>
+                        )}
+                        {(habit.assignedTo === 'user2' || habit.assignedTo === 'both') && (
+                          <div className="flex items-center gap-2">
+                            <Checkbox 
+                              id={`habit-${habit.id}-user2`}
+                              checked={draftDay?.habits?.[habit.id]?.user2 || false}
+                              onCheckedChange={(checked: boolean | string) => {
+                                if (!draftDay) return;
+                                const currentHabit = draftDay.habits[habit.id] || { user1: false, user2: false };
+                                setDraftDay({
+                                  ...draftDay,
+                                  habits: {
+                                    ...draftDay.habits,
+                                    [habit.id]: { ...currentHabit, user2: checked === true }
+                                  }
+                                });
+                              }}
+                            />
+                            <Label htmlFor={`habit-${habit.id}-user2`} className="text-xs text-gray-500">{config.user2Name}</Label>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Journal */}

@@ -2524,3 +2524,21 @@ html {
   flex-shrink: initial;
   flex-basis: 33.33%;
 }
+
+
+.streak {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(12px, 12px);
+  font-size: 9px;
+  border-radius: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  aspect-ratio: 1 / 1;
+      border: 1px solid #ee7470;
+}
+.recharts-text.recharts-label {
+  /* display: none; */
+}

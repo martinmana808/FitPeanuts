@@ -395,6 +395,84 @@ app.get('/make-server-f0bd5752/household/:code/calendar/:year/:month', async (c)
   }
 });
 
+// Get streaks
+app.get('/make-server-f0bd5752/household/:code/streaks', async (c) => {
+  try {
+    const code = c.req.param('code');
+    
+    // Get all days
+    const prefix = `household:${code}:day:`;
+    const allDays = await kv.getByPrefix(prefix);
+    const config = await kv.get(`household:${code}:config`);
+    
+    if (!config) {
+      return c.json({ success: false, error: 'Household not found' }, 404);
+    }
+
+    // Sort days descending (newest first)
+    const sortedDays = allDays.sort((a: any, b: any) => b.date.localeCompare(a.date));
+    
+    const streaks: Record<string, { user1: number; user2: number }> = {};
+    const todayKey = getTodayKey();
+    
+    // Initialize streaks
+    config.customHabits.forEach((habit: any) => {
+      streaks[habit.id] = { user1: 0, user2: 0 };
+    });
+
+    // Helper to calculate streak for a user and habit
+    const calculateStreak = (habitId: string, user: 'user1' | 'user2') => {
+      // First, count consecutive days BEFORE today (starting from yesterday)
+      let previousStreak = 0;
+      let daysBack = 1;
+      
+      while (true) {
+        const d = new Date(todayKey);
+        d.setDate(d.getDate() - daysBack);
+        const dateStr = d.toISOString().split('T')[0];
+        
+        const dayData = sortedDays.find((day: any) => day.date === dateStr);
+        
+        if (dayData?.habits?.[habitId]?.[user]) {
+          previousStreak++;
+          daysBack++;
+        } else {
+          // First day we miss, streak is broken
+          break;
+        }
+      }
+      
+      // Only show streak if we have at least one previous day done
+      if (previousStreak === 0) {
+        // No previous streak - even if today is done, no streak yet
+        return 0;
+      }
+      
+      // Check if today is done
+      const todayData = sortedDays.find((d: any) => d.date === todayKey);
+      const todayDone = todayData?.habits?.[habitId]?.[user];
+      
+      if (todayDone) {
+        // Today is done - add 1 to previous streak
+        return previousStreak + 1;
+      } else {
+        // Today not done - show only previous streak
+        return previousStreak;
+      }
+    };
+
+    config.customHabits.forEach((habit: any) => {
+      streaks[habit.id].user1 = calculateStreak(habit.id, 'user1');
+      streaks[habit.id].user2 = calculateStreak(habit.id, 'user2');
+    });
+    
+    return c.json({ success: true, streaks });
+  } catch (error) {
+    console.error('Error calculating streaks:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
 // Update household config
 app.put('/make-server-f0bd5752/household/:code/config', async (c) => {
   try {

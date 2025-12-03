@@ -96,42 +96,46 @@ export function JournalInput({ value, submitted, onChange, onSave, onSubmit, api
         placeholder="How did today go? What are you grateful for? What could be better tomorrow?"
         className="min-h-[120px] resize-none bg-white/80 backdrop-blur-sm border-gray-200 focus:border-amber-300 focus:ring-amber-200 transition-all"
       />
-      <div className="flex gap-2">
-        {apiKey && !submitted && (
+      <div>
+        <div className="flex gap-2">
+          {apiKey && !submitted && (
+            <Button
+              onClick={tidyJournal}
+              variant="outline"
+              size="sm"
+              disabled={!value.trim() || isTidying}
+              className="gap-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 border-purple-200 w-full shrink"
+            >
+              <Sparkles className={`h-3.5 w-3.5 ${isTidying ? 'animate-spin' : ''}`} />
+              {isTidying ? 'Tidying...' : 'Tidy'}
+            </Button>
+          )}
+          {onSave && (
+            <Button
+              onClick={() => onSave()}
+              variant="outline"
+              size="sm"
+              disabled={!value.trim()}
+              className="gap-2 w-full shrink"
+            >
+              Save Draft
+            </Button>
+          )}
+        </div>
+        <div>
           <Button
-            onClick={tidyJournal}
-            variant="outline"
-            size="sm"
-            disabled={!value.trim() || isTidying}
-            className="gap-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 border-purple-200"
-          >
-            <Sparkles className={`h-3.5 w-3.5 ${isTidying ? 'animate-spin' : ''}`} />
-            {isTidying ? 'Tidying...' : 'Tidy'}
-          </Button>
-        )}
-        {onSave && (
-          <Button
-            onClick={() => onSave()}
-            variant="outline"
+            onClick={() => {
+              onSubmit();
+              setIsEditing(false);
+            }}
             size="sm"
             disabled={!value.trim()}
-            className="gap-2"
+            className="bg-gradient-to-r from-gray-900 to-gray-700 hover:from-gray-800 hover:to-gray-600 gap-2 mt-2 w-full shrink"
           >
-            Save Draft
+            <Check className="h-4 w-4" />
+            {submitted ? 'Update Journal' : 'Submit Journal'}
           </Button>
-        )}
-        <Button
-          onClick={() => {
-            onSubmit();
-            setIsEditing(false);
-          }}
-          size="sm"
-          disabled={!value.trim()}
-          className="bg-gradient-to-r from-gray-900 to-gray-700 hover:from-gray-800 hover:to-gray-600 gap-2"
-        >
-          <Check className="h-4 w-4" />
-          {submitted ? 'Update Journal' : 'Submit Journal'}
-        </Button>
+        </div>
       </div>
     </motion.div>
   );

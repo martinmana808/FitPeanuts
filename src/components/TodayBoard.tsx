@@ -60,7 +60,73 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
   const [newHabitAssignedTo, setNewHabitAssignedTo] = useState<'user1' | 'user2' | 'both'>('both');
   const [localJournalValue, setLocalJournalValue] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [streaks, setStreaks] = useState<Record<string, { user1: number; user2: number }>>({});
   const [lastKnownJournalSubmitted, setLastKnownJournalSubmitted] = useState(false);
+
+  // ... (existing code)
+
+  const fetchStreaks = async () => {
+    try {
+      const { projectId, publicAnonKey } = await import('../utils/supabase/info.tsx');
+      
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-f0bd5752/household/${householdCode}/streaks`,
+        {
+          headers: {
+            'Authorization': `Bearer ${publicAnonKey}`
+          }
+        }
+      );
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setStreaks(result.streaks);
+      }
+    } catch (error) {
+      console.error('Error fetching streaks:', error);
+    }
+  };
+
+  // Helper function to get streak color based on count (1-10 days)
+  const getStreakColor = (count: number): string => {
+    const colors = [
+      '#fdf1f0', // Day 1
+      '#fae2e2', // Day 2
+      '#f8d4d3', // Day 3
+      '#f6c6c5', // Day 4
+      '#f4b8b6', // Day 5
+      '#f3aaa8', // Day 6
+      '#f3aaa8', // Day 7
+      '#f08f8c', // Day 8
+      '#ef817e', // Day 9
+      '#ee7470'  // Day 10+
+    ];
+    const index = Math.min(count - 1, 9); // Cap at index 9 for 10+ days
+    return colors[index] || colors[9];
+  };
+
+
+  useEffect(() => {
+    // Load journal draft on mount
+    const draft = loadJournalDraft();
+    if (draft) {
+      setLocalJournalValue(draft);
+    }
+
+    fetchTodayData();
+    fetchStreaks();
+
+    // Poll every 5 seconds for real-time updates
+    const interval = setInterval(() => {
+      fetchTodayData();
+      fetchStreaks();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [householdCode]);
+
+  // ... (existing code)
 
   // localStorage key for journal drafts
   const getJournalDraftKey = () => `journal_draft_${householdCode}_${getTodayKey()}`;
@@ -703,28 +769,48 @@ export function TodayBoard({ householdCode, identity }: TodayBoardProps) {
                       <div className="font-medium habit-name">{habit.name}</div>
                     </button>
                   </div>
-                  <div className="flex items-center justify-center">
+                  <div className="flex items-center justify-center flex-col gap-1">
                     {showUser1 ? (
-                      <motion.div whileTap={{ scale: 0.95 }} className="flex">
-                        <Checkbox
-                          checked={user1Completed}
-                          onCheckedChange={() => toggleHabit(habit.id, 'user1')}
-                          className="w-6 h-6"
-                        />
-                      </motion.div>
+                      <>
+                        <motion.div whileTap={{ scale: 0.95 }} className="flex">
+                          <Checkbox
+                            checked={user1Completed}
+                            onCheckedChange={() => toggleHabit(habit.id, 'user1')}
+                            className="w-6 h-6"
+                          />
+                        </motion.div>
+                        {streaks[habit.id]?.user1 > 0 && (
+                          <div 
+                            className="text-[10px] font-medium text-gray-800 flex items-center gap-0.5 streak"
+                            style={{ backgroundColor: getStreakColor(streaks[habit.id].user1) }}
+                          >
+                            {streaks[habit.id].user1}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="text-gray-300">—</div>
                     )}
                   </div>
-                  <div className="flex items-center justify-center">
+                  <div className="flex items-center justify-center flex-col gap-1">
                     {showUser2 ? (
-                      <motion.div whileTap={{ scale: 0.95 }} className="flex">
-                        <Checkbox
-                          checked={user2Completed}
-                          onCheckedChange={() => toggleHabit(habit.id, 'user2')}
-                          className="w-6 h-6"
-                        />
-                      </motion.div>
+                      <>
+                        <motion.div whileTap={{ scale: 0.95 }} className="flex">
+                          <Checkbox
+                            checked={user2Completed}
+                            onCheckedChange={() => toggleHabit(habit.id, 'user2')}
+                            className="w-6 h-6"
+                          />
+                        </motion.div>
+                        {streaks[habit.id]?.user2 > 0 && (
+                          <div 
+                            className="text-[10px] font-medium text-gray-800 flex items-center gap-0.5 streak"
+                            style={{ backgroundColor: getStreakColor(streaks[habit.id].user2) }}
+                          >
+                            {streaks[habit.id].user2}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="text-gray-300">—</div>
                     )}
